@@ -10,6 +10,9 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.switchTheme', switchTheme)
     );
+
+	// Schedule the theme switch immediately upon activation
+    scheduleThemeSwitch();
 }
 
 
@@ -52,11 +55,14 @@ export function activate(context: vscode.ExtensionContext) {
 		const timeUntilSwitch = nextSwitch.getTime() - now.getTime();
 		console.log(`Next theme switch scheduled in ${timeUntilSwitch / 1000} seconds.`);
 
+		const hoursUntilSwitch = (timeUntilSwitch / (1000 * 60 * 60)).toFixed(2);
+
+		vscode.window.showInformationMessage(`Time till next switch: ${hoursUntilSwitch} hours`);
 		// Schedule the theme switch at the next 6 AM or 6 PM
 		setTimeout(() => {
 			switchTheme();
 			scheduleThemeSwitch();  // Schedule the next switch after this one
-		}, timeUntilSwitch);
+		}, timeUntilSwitch)
 	}
 
 
