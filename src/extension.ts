@@ -5,22 +5,60 @@ import * as vscode from 'vscode';
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+    console.log('Theme Switcher extension is active!');
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "theme-switcher" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('theme-switcher.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from Theme Switcher!');
-	});
-
-	context.subscriptions.push(disposable);
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.switchTheme', switchTheme)
+    );
 }
 
+
+
+	// Function to switch themes based on time
+	export async function switchTheme() {
+		const themes = ["Kimbie Dark", "Quiet Light"];
+		const currentHour = new Date().getHours();
+
+		const selectedTheme = (currentHour >= 18 || currentHour < 6) ? themes[0] : themes[1]; //add feature to get local sunrise and sunset times
+
+		console.log(`Switching to theme: ${selectedTheme}`);
+		await vscode.workspace.getConfiguration('workbench').update(
+			'colorTheme',
+			selectedTheme,
+			vscode.ConfigurationTarget.Global
+		);
+		vscode.window.showInformationMessage(`Theme switched to: ${selectedTheme}`);
+	}
+
+
+	// Function to calculate the next switch time and schedule it
+	function scheduleThemeSwitch() {
+		const now = new Date();
+		const nextSwitch = new Date();
+
+		// Schedule for the next 6 AM or 6 PM
+		if (now.getHours() >= 18) {
+			// If it's past 6 PM, schedule for the next 6 AM
+			nextSwitch.setHours(6, 0, 0, 0);
+			nextSwitch.setDate(now.getDate() + 1);
+		} else if (now.getHours() >= 6) {
+			// If it's past 6 AM but before 6 PM, schedule for 6 PM
+			nextSwitch.setHours(18, 0, 0, 0);
+		} else {
+			// If it's before 6 AM, schedule for today at 6 AM
+			nextSwitch.setHours(6, 0, 0, 0);
+		}
+
+		const timeUntilSwitch = nextSwitch.getTime() - now.getTime();
+		console.log(`Next theme switch scheduled in ${timeUntilSwitch / 1000} seconds.`);
+
+		// Schedule the theme switch at the next 6 AM or 6 PM
+		setTimeout(() => {
+			switchTheme();
+			scheduleThemeSwitch();  // Schedule the next switch after this one
+		}, timeUntilSwitch);
+	}
+
+
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() { }
