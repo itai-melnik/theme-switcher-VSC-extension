@@ -1,69 +1,117 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import { getLocation, getSunTimes } from './apiService';
+
+// Global variables to store sunrise and sunset times
+let sunriseTime: string | undefined;
+let sunsetTime: string | undefined;
 
 // This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     console.log('Theme Switcher extension is active!');
 
+    // Fetch and store sunrise and sunset times
+    await initializeSunTimes();
+
+    // Register the theme switch command
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.switchTheme', switchTheme)
     );
 
-	// Schedule the theme switch immediately upon activation
+    // Immediately switch the theme upon activation
+    await switchTheme();
     scheduleThemeSwitch();
+}
+
+// Function to initialize sunrise and sunset times
+async function initializeSunTimes() {
+    try {
+        const location = await getLocation();
+        if (!location) {
+            vscode.window.showErrorMessage('Failed to retrieve location.');
+            return;
+        }
+
+        const { lat, lon } = location;
+        const sunTimes = await getSunTimes(lat, lon);
+        if (!sunTimes) {
+            vscode.window.showErrorMessage('Failed to retrieve sun times.');
+            return;
+        }
+
+        sunriseTime = sunTimes.sunrise;
+        sunsetTime = sunTimes.sunset;
+
+        console.log(`Sunrise: ${sunriseTime}, Sunset: ${sunsetTime}`);
+    } catch (error) {
+        console.error('Error initializing sun times:', error);
+        vscode.window.showErrorMessage('An error occurred while retrieving sun times.');
+    }
 }
 
 
 
-	// Function to switch themes based on time
-	export async function switchTheme() {
-		const themes = ["Kimbie Dark", "Quiet Light"];
-		const currentHour = new Date().getHours();
+// Function to switch the theme based on the time of day
+export async function switchTheme() {
+    if (!sunriseTime || !sunsetTime) {
+        vscode.window.showErrorMessage('Sunrise and sunset times are not initialized.');
+        return;
+    }
 
-		const selectedTheme = (currentHour >= 18 || currentHour < 6) ? themes[0] : themes[1]; //add feature to get local sunrise and sunset times
+    const currentTime = new Date().toISOString();
+    const isDay = currentTime >= sunriseTime && currentTime < sunsetTime;
 
-		console.log(`Switching to theme: ${selectedTheme}`);
-		await vscode.workspace.getConfiguration('workbench').update(
-			'colorTheme',
-			selectedTheme,
-			vscode.ConfigurationTarget.Global
-		);
-		vscode.window.showInformationMessage(`Theme switched to: ${selectedTheme}`);
-	}
+    const themes = ['Quiet Light', 'Kimbie Dark'];
+    const selectedTheme = isDay ? themes[0] : themes[1];
+
+    console.log(`Switching to theme: ${selectedTheme}`);
+    await vscode.workspace.getConfiguration('workbench').update(
+        'colorTheme',
+        selectedTheme,
+        vscode.ConfigurationTarget.Global
+    );
+
+    vscode.window.showInformationMessage(`Theme switched to: ${selectedTheme}`);
+}
 
 
-	// Function to calculate the next switch time and schedule it
-	function scheduleThemeSwitch() {
-		const now = new Date();
-		const nextSwitch = new Date();
 
-		// Schedule for the next 6 AM or 6 PM
-		if (now.getHours() >= 18) {
-			// If it's past 6 PM, schedule for the next 6 AM
-			nextSwitch.setHours(6, 0, 0, 0);
-			nextSwitch.setDate(now.getDate() + 1);
-		} else if (now.getHours() >= 6) {
-			// If it's past 6 AM but before 6 PM, schedule for 6 PM
-			nextSwitch.setHours(18, 0, 0, 0);
-		} else {
-			// If it's before 6 AM, schedule for today at 6 AM
-			nextSwitch.setHours(6, 0, 0, 0);
-		}
 
-		const timeUntilSwitch = nextSwitch.getTime() - now.getTime();
-		console.log(`Next theme switch scheduled in ${timeUntilSwitch / 1000} seconds.`);
+// Function to calculate the next switch time based on sunrise/sunset and schedule it
+function scheduleThemeSwitch() {
+    if (!sunriseTime || !sunsetTime) {
+        vscode.window.showErrorMessage('Sunrise and sunset times are not initialized.');
+        return;
+    }
 
-		const hoursUntilSwitch = (timeUntilSwitch / (1000 * 60 * 60)).toFixed(2);
+    const now = new Date();
+    const sunrise = new Date(sunriseTime);
+    const sunset = new Date(sunsetTime);
 
-		vscode.window.showInformationMessage(`Time till next switch: ${hoursUntilSwitch} hours`);
-		// Schedule the theme switch at the next 6 AM or 6 PM
-		setTimeout(() => {
-			switchTheme();
-			scheduleThemeSwitch();  // Schedule the next switch after this one
-		}, timeUntilSwitch)
-	}
+    let nextSwitch: Date;
+
+    // Determine the next switch time
+    if (now < sunrise) {
+        nextSwitch = sunrise; // Switch at the next sunrise
+    } else if (now < sunset) {
+        nextSwitch = sunset; // Switch at the next sunset
+    } else {
+        nextSwitch = new Date(sunrise.getTime() + 24 * 60 * 60 * 1000); // Next day's sunrise
+    }
+
+    const timeUntilSwitch = nextSwitch.getTime() - now.getTime();
+    console.log(`Next theme switch scheduled in ${timeUntilSwitch / 1000} seconds.`);
+
+    const hoursUntilSwitch = (timeUntilSwitch / (1000 * 60 * 60)).toFixed(2);
+    vscode.window.showInformationMessage(`Time till next switch: ${hoursUntilSwitch} hours`);
+
+    // Schedule the theme switch for the next sunrise or sunset
+    setTimeout(async () => {
+        await switchTheme();
+        scheduleThemeSwitch(); // Schedule the next switch
+    }, timeUntilSwitch);
+}
 
 
 // This method is called when your extension is deactivated
